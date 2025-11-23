@@ -254,7 +254,7 @@ export default function App() {
   // File Management State
   const [files, setFiles] = useState<SavedFile[]>(() => {
     try {
-        const saved = localStorage.getItem('icon_forge_files');
+        const saved = localStorage.getItem('emblemic_files');
         if (saved) {
             const parsed = JSON.parse(saved);
             const sorted = parsed.sort((a: SavedFile, b: SavedFile) => b.lastModified - a.lastModified);
@@ -265,7 +265,7 @@ export default function App() {
                 config: {
                     ...INITIAL_CONFIG,
                     ...f.config,
-                    imageSize: f.config.imageSize || (f.config.imageScale ? 360 : INITIAL_CONFIG.imageSize)
+                    imageSize: f.config.imageSize || (f.config.imageScale ? 256 : INITIAL_CONFIG.imageSize)
                 }
             }));
             
@@ -338,7 +338,7 @@ export default function App() {
         const newFiles = [...prevFiles];
         newFiles[fileIndex] = updatedFile;
         
-        localStorage.setItem('icon_forge_files', JSON.stringify(newFiles));
+        localStorage.setItem('emblemic_files', JSON.stringify(newFiles));
         return newFiles;
     });
   }, [history.present, filename, activeFileId]);
@@ -375,7 +375,7 @@ export default function App() {
       
       const newFiles = [newFile, ...filesWithSavedWork];
       setFiles(newFiles);
-      localStorage.setItem('icon_forge_files', JSON.stringify(newFiles));
+      localStorage.setItem('emblemic_files', JSON.stringify(newFiles));
       
       // 3. Switch to new file
       setActiveFileId(newFile.id);
@@ -393,7 +393,7 @@ export default function App() {
       // 1. Save current work before switching
       const filesWithSavedWork = saveCurrentWork(files);
       setFiles(filesWithSavedWork);
-      localStorage.setItem('icon_forge_files', JSON.stringify(filesWithSavedWork));
+      localStorage.setItem('emblemic_files', JSON.stringify(filesWithSavedWork));
 
       // 2. Switch
       setActiveFileId(file.id);
@@ -428,7 +428,7 @@ export default function App() {
               setHistory({ past: [], present: nextFile.config, future: [] });
           }
       }
-      localStorage.setItem('icon_forge_files', JSON.stringify(newFiles));
+      localStorage.setItem('emblemic_files', JSON.stringify(newFiles));
   };
 
 
@@ -559,7 +559,7 @@ export default function App() {
             const fontFamily = config.fontFamily.split(',')[0].replace(/['"]/g, '');
             contentSvg = `<text 
                 x="256" 
-                y="256" 
+                y="${256 + config.textOffsetY}" 
                 font-family="${fontFamily}" 
                 font-size="${config.textSize}" 
                 font-weight="${config.fontWeight}" 
@@ -720,12 +720,13 @@ export default function App() {
     
     if (config.mode === 'text') {
         const fontSize = config.textSize * scaleFactor;
+        const offsetY = config.textOffsetY * scaleFactor;
         ctx.font = `${config.fontWeight} ${fontSize}px ${config.fontFamily.split(',')[0].replace(/['"]/g, '')}`;
         ctx.fillStyle = config.textColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         // Adjust for baseline visual alignment
-        ctx.fillText(config.textContent, 0, 0);
+        ctx.fillText(config.textContent, 0, offsetY);
     } else if (config.mode === 'pixel') {
         const gridSize = config.pixelGrid.cols;
         const drawSize = config.pixelSize * scaleFactor;
@@ -841,7 +842,7 @@ export default function App() {
                     className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors ${isFilesMenuOpen ? 'bg-zinc-800 text-white' : 'text-zinc-200 hover:bg-zinc-800/50'}`}
                 >
                     <Layers className="text-blue-500" size={18} />
-                    <span className="font-semibold tracking-tight">Icon Maker</span>
+                    <span className="font-semibold tracking-tight">Emblemic</span>
                     <ChevronDown size={12} className={`text-zinc-500 ml-1 transition-transform ${isFilesMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -1011,8 +1012,8 @@ export default function App() {
                         </Section>
 
                         <Section title="Adjustments">
-                            <NumberInput label="Size" value={config.iconSize} min={16} max={ICON_SIZE} step={8} suffix="px" onChange={(v) => updateConfig({ iconSize: v })} />
-                            <NumberInput label="Vertical Offset" value={config.iconOffsetY} min={-256} max={256} step={4} suffix="px" onChange={(v) => updateConfig({ iconOffsetY: v })} />
+                            <NumberInput label="Size" value={config.iconSize} min={16} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ iconSize: v })} />
+                            <NumberInput label="Vertical Offset" value={config.iconOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ iconOffsetY: v })} />
                         </Section>
 
                         <Section title="Appearance">
@@ -1050,7 +1051,8 @@ export default function App() {
                          </Section>
 
                          <Section title="Adjustments">
-                            <NumberInput label="Size" value={config.textSize} min={16} max={ICON_SIZE} step={8} suffix="px" onChange={(v) => updateConfig({ textSize: v })} />
+                            <NumberInput label="Size" value={config.textSize} min={16} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ textSize: v })} />
+                            <NumberInput label="Vertical Offset" value={config.textOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ textOffsetY: v })} />
                             <ControlLabel>Font Weight</ControlLabel>
                             <div className="flex gap-1 bg-zinc-900/50 p-1 rounded-md border border-white/5">
                                 {['400', '600', '700', '900'].map(w => (
@@ -1084,7 +1086,7 @@ export default function App() {
                             />
                         </Section>
                         <Section title="Adjustments">
-                             <NumberInput label="Size" value={config.pixelSize} min={32} max={ICON_SIZE} step={8} suffix="px" onChange={(v) => updateConfig({ pixelSize: v })} />
+                             <NumberInput label="Size" value={config.pixelSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ pixelSize: v })} />
                         </Section>
                         <div className="bg-zinc-900/30 p-3 rounded-md border border-white/5 text-[10px] text-zinc-500">
                             Tip: Left click to draw, right click or use eraser to remove pixels.
@@ -1133,8 +1135,8 @@ export default function App() {
                         </Section>
 
                         <Section title="Adjustments">
-                            <NumberInput label="Size" value={config.imageSize} min={32} max={ICON_SIZE} step={8} suffix="px" onChange={(v) => updateConfig({ imageSize: v })} />
-                            <NumberInput label="Vertical Offset" value={config.imageOffsetY} min={-256} max={256} step={4} suffix="px" onChange={(v) => updateConfig({ imageOffsetY: v })} />
+                            <NumberInput label="Size" value={config.imageSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ imageSize: v })} />
+                            <NumberInput label="Vertical Offset" value={config.imageOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ imageOffsetY: v })} />
                         </Section>
                     </div>
                  )}

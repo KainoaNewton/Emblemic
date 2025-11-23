@@ -36,6 +36,7 @@ export interface IconConfig {
   textColor: string;
   textSize: number;
   fontWeight: string;
+  textOffsetY: number;
   
   // Pixel Mode
   pixelGrid: PixelGrid;

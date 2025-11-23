@@ -109,7 +109,7 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
                 color: textColor,
                 fontSize: `${textSize * scale}px`,
                 fontWeight: config.fontWeight,
-                transform: `translateY(0px)`, // Reset
+                transform: `translateY(${config.textOffsetY * scale}px)`,
               }}
             >
               {textContent}
