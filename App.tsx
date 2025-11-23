@@ -3,13 +3,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Download, Undo2, Redo2, Layers, Search, 
   ChevronDown, Type, Image as ImageIcon, Grid3X3, 
-  Minus, Plus, Info, Check, Trash2, Folder, File, PlusCircle
+  Plus, Check, Trash2, File, X
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import Preview from './components/Preview';
 import PixelEditor from './components/PixelEditor';
 import { IconConfig, Preset, ContentMode } from './types';
-import { FONTS, PRESETS, INITIAL_PIXEL_GRID_SIZE, INITIAL_CONFIG, ICON_SIZE } from './constants';
+import { FONTS, PRESETS, INITIAL_PIXEL_GRID_SIZE, INITIAL_CONFIG, ICON_SIZE, SQUIRCLE_PATH } from './constants';
 
 // --- Types ---
 interface HistoryState {
@@ -24,6 +24,9 @@ interface SavedFile {
   config: IconConfig;
   lastModified: number;
 }
+
+type ExportFormat = 'png' | 'jpg' | 'webp' | 'svg';
+type ExportScope = 'full' | 'content';
 
 // --- UI Helper Components ---
 
@@ -156,6 +159,93 @@ const TabButton = ({ active, onClick, icon: Icon, label }: { active: boolean; on
   </button>
 );
 
+// --- Export Modal ---
+
+interface ExportModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onExport: (format: ExportFormat, scope: ExportScope) => void;
+    filename: string;
+}
+
+const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, filename }) => {
+    const [format, setFormat] = useState<ExportFormat>('png');
+    const [includeBackground, setIncludeBackground] = useState(true);
+
+    if (!isOpen) return null;
+
+    const handleExport = () => {
+        onExport(format, includeBackground ? 'full' : 'content');
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div 
+                className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/5" 
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="p-6 space-y-6">
+                    <div className="flex items-center justify-between">
+                         <h2 className="text-base font-semibold text-white">Export Icon</h2>
+                         <button 
+                             onClick={onClose} 
+                             className="p-1 -mr-1 text-zinc-500 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="space-y-4">
+                        {/* Format Selection */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-400">Format</label>
+                            <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-950/50 rounded-lg border border-white/5">
+                                {(['png', 'jpg', 'webp', 'svg'] as ExportFormat[]).map((f) => (
+                                    <button
+                                        key={f}
+                                        onClick={() => setFormat(f)}
+                                        className={`py-1.5 px-2 rounded-md text-[11px] font-bold uppercase transition-all ${
+                                            format === f 
+                                            ? 'bg-zinc-800 text-white shadow-sm ring-1 ring-white/10' 
+                                            : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                                        }`}
+                                    >
+                                        {f}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Background Toggle */}
+                        <div 
+                            onClick={() => setIncludeBackground(!includeBackground)}
+                            className="flex items-center justify-between p-3 rounded-lg border border-white/5 bg-zinc-800/20 hover:bg-zinc-800/40 hover:border-white/10 transition-all cursor-pointer group"
+                        >
+                            <div className="flex flex-col gap-0.5">
+                                 <span className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">Background</span>
+                                 <span className="text-[11px] text-zinc-500">
+                                    {includeBackground ? 'Export squircle container' : 'Export transparent content'}
+                                 </span>
+                            </div>
+                            <div className={`w-11 h-6 rounded-full relative transition-colors duration-200 border border-transparent ${includeBackground ? 'bg-blue-600' : 'bg-zinc-700'}`}>
+                                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all duration-200 shadow-sm ${includeBackground ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={handleExport}
+                        className="w-full flex items-center justify-center gap-2 bg-white text-black hover:bg-zinc-200 py-3 rounded-xl text-sm font-bold transition-all transform active:scale-[0.98]"
+                    >
+                        <Download size={18} />
+                        <span>Export {filename}.{format}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 
 // --- Main App ---
@@ -205,6 +295,9 @@ export default function App() {
   const [viewZoom, setViewZoom] = useState(1);
   const [isZoomMenuOpen, setIsZoomMenuOpen] = useState(false);
   const [iconSearch, setIconSearch] = useState('');
+  
+  // Export State
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // --- Persistence Effects ---
 
@@ -403,13 +496,139 @@ export default function App() {
 
 
   // --- Export Logic ---
-  const handleExport = async () => {
+  const processExport = async (format: ExportFormat, scope: ExportScope) => {
+    const size = config.exportSize;
+    const filenameWithExt = `${filename}.${format}`;
+    // Export background if the scope is full, regardless of preview setting
+    const withBg = scope === 'full';
+
+    // SVG GENERATION
+    if (format === 'svg') {
+        const svgNs = "http://www.w3.org/2000/svg";
+        // When using viewBox 0 0 512 512, scale is effectively 1 relative to the coordinate system
+        const scale = 1; 
+        
+        // 1. Generate Content SVG String
+        let contentSvg = '';
+        
+        if (config.mode === 'icon') {
+            const svgEl = document.getElementById('preview-export-target')?.querySelector('svg');
+            if (svgEl) {
+                const clone = svgEl.cloneNode(true) as SVGElement;
+                // Center in 512x512 space
+                const iconDrawSize = config.iconSize;
+                const x = (ICON_SIZE - iconDrawSize) / 2;
+                const y = (ICON_SIZE - iconDrawSize) / 2 + config.iconOffsetY;
+                
+                clone.setAttribute('width', iconDrawSize.toString());
+                clone.setAttribute('height', iconDrawSize.toString());
+                clone.setAttribute('x', x.toString());
+                clone.setAttribute('y', y.toString());
+                clone.setAttribute('color', config.iconColor);
+                clone.removeAttribute('class');
+                contentSvg = new XMLSerializer().serializeToString(clone);
+            }
+        } else if (config.mode === 'text') {
+            // Text centering in SVG
+            const fontFamily = config.fontFamily.split(',')[0].replace(/['"]/g, '');
+            contentSvg = `<text 
+                x="256" 
+                y="256" 
+                font-family="${fontFamily}" 
+                font-size="${config.textSize}" 
+                font-weight="${config.fontWeight}" 
+                fill="${config.textColor}" 
+                text-anchor="middle" 
+                dominant-baseline="central"
+            >${config.textContent}</text>`;
+        } else if (config.mode === 'pixel') {
+            const gridSize = config.pixelGrid.cols;
+            const drawSize = config.pixelSize;
+            const cellSize = drawSize / gridSize;
+            const startX = (ICON_SIZE - drawSize) / 2;
+            const startY = (ICON_SIZE - drawSize) / 2;
+            
+            let rects = '';
+            config.pixelGrid.data.forEach((color, i) => {
+                if (color) {
+                    const r = Math.floor(i / gridSize);
+                    const c = i % gridSize;
+                    rects += `<rect x="${startX + c * cellSize}" y="${startY + r * cellSize}" width="${cellSize + 0.1}" height="${cellSize + 0.1}" fill="${color}" />`;
+                }
+            });
+            contentSvg = `<g>${rects}</g>`;
+        }
+
+        // 2. Assemble Final SVG
+        let fullSvg = '';
+        
+        if (withBg) {
+             let bgFill = '';
+             let defs = '';
+             
+             if (config.backgroundType === 'solid') {
+                 bgFill = `fill="${config.solidColor}"`;
+             } else if (config.backgroundType === 'linear') {
+                 const gradId = 'gradLinear';
+                 defs += `<linearGradient id="${gradId}" gradientTransform="rotate(${config.gradientAngle} 0.5 0.5)">
+                    <stop offset="0%" stop-color="${config.gradientStart}"/>
+                    <stop offset="100%" stop-color="${config.gradientEnd}"/>
+                 </linearGradient>`;
+                 bgFill = `fill="url(#${gradId})"`;
+             } else {
+                 const gradId = 'gradRadial';
+                 defs += `<radialGradient id="${gradId}" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="${config.gradientStart}"/>
+                    <stop offset="100%" stop-color="${config.gradientEnd}"/>
+                 </radialGradient>`;
+                 bgFill = `fill="url(#${gradId})"`;
+             }
+
+             if (config.noiseOpacity > 0) {
+                 defs += `<filter id="noiseFilter">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+                 </filter>`;
+             }
+             
+             fullSvg = `<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="${svgNs}">
+                <defs>
+                    ${defs}
+                    <clipPath id="squircleClip">
+                        <path d="${SQUIRCLE_PATH}" />
+                    </clipPath>
+                </defs>
+                <g clip-path="url(#squircleClip)">
+                    <rect width="512" height="512" ${bgFill} />
+                    ${config.noiseOpacity > 0 ? `<rect width="512" height="512" filter="url(#noiseFilter)" opacity="${config.noiseOpacity}" style="mix-blend-mode: overlay" />` : ''}
+                </g>
+                <g>
+                    ${contentSvg}
+                </g>
+             </svg>`;
+        } else {
+             // Transparent / No background
+             fullSvg = `<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="${svgNs}">
+                ${contentSvg}
+             </svg>`;
+        }
+
+        const blob = new Blob([fullSvg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filenameWithExt;
+        link.click();
+        URL.revokeObjectURL(url);
+        
+        setIsExportModalOpen(false);
+        return;
+    }
+
+    // RASTER GENERATION (PNG/JPG/WEBP)
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Size setup
-    const size = config.exportSize;
     canvas.width = size;
     canvas.height = size;
     
@@ -417,7 +636,7 @@ export default function App() {
     const scaleFactor = size / ICON_SIZE;
 
     // 1. Draw Background
-    if (config.withBackground) {
+    if (withBg) {
         const radius = size * 0.22; // Apple-ish
         ctx.beginPath();
         ctx.roundRect(0, 0, size, size, radius);
@@ -451,10 +670,21 @@ export default function App() {
             }
             ctx.putImageData(imageData, 0, 0);
         }
+    } else {
+        // Transparent background
+        // For JPG, transparency renders as black usually. We could fill white if format is jpg?
+        // Let's just leave it transparent (defaults to black in many viewers if JPEG).
+        if (format === 'jpg') {
+             // Optional: fill white for JPG if no background? 
+             // ctx.fillStyle = '#000000'; 
+             // ctx.fillRect(0,0,size,size);
+        }
     }
 
     // 2. Draw Content
     const center = size / 2;
+    // We need to save/restore context for the translation
+    ctx.save();
     ctx.translate(center, center);
     
     if (config.mode === 'text') {
@@ -490,7 +720,6 @@ export default function App() {
             await new Promise((resolve) => {
                 img.onload = () => {
                     const drawSize = config.iconSize * scaleFactor;
-                    // The SVG is square, so we can use drawSize for both width and height
                     const offsetY = config.iconOffsetY * scaleFactor;
                     ctx.drawImage(img, -drawSize/2, -drawSize/2 + offsetY, drawSize, drawSize);
                     URL.revokeObjectURL(url);
@@ -500,12 +729,16 @@ export default function App() {
             });
         }
     }
+    ctx.restore();
 
     // 3. Trigger Download
     const link = document.createElement('a');
-    link.download = `${filename}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.download = filenameWithExt;
+    const mimeType = format === 'jpg' ? 'image/jpeg' : `image/${format}`;
+    link.href = canvas.toDataURL(mimeType, 0.9);
     link.click();
+    
+    setIsExportModalOpen(false);
   };
 
   const iconList = Object.keys(LucideIcons).filter(name => 
@@ -529,6 +762,14 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-black text-zinc-300 font-sans overflow-hidden">
       
+      {/* Export Modal */}
+      <ExportModal 
+        isOpen={isExportModalOpen} 
+        onClose={() => setIsExportModalOpen(false)} 
+        onExport={processExport}
+        filename={filename}
+      />
+
       {/* --- HEADER --- */}
       <header className="h-14 bg-zinc-950/80 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-50 shrink-0">
         
@@ -650,7 +891,7 @@ export default function App() {
         {/* Right: Export */}
         <div className="flex items-center justify-end gap-3 w-1/3">
              <button 
-                onClick={handleExport}
+                onClick={() => setIsExportModalOpen(true)}
                 className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-zinc-900 border border-transparent px-3 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm"
              >
                 <Download size={14} />
