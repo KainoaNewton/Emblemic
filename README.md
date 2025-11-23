@@ -73,6 +73,9 @@ The application runs entirely in your browser with no server-side dependencies, 
    ```
    http://localhost:3000
    ```
+   
+   > [!TIP]
+   > The development server port can be configured in `vite.config.ts` if port 3000 is already in use.
 
 ## Usage
 
@@ -107,7 +110,7 @@ IconForge is built with modern web technologies:
 - **Language**: [TypeScript](https://www.typescriptlang.org/) - Type-safe JavaScript
 - **Build Tool**: [Vite](https://vitejs.dev/) - Fast build tool and dev server
 - **Icons**: [Lucide React](https://lucide.dev/) - Beautiful, customizable icons
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) (via CDN) - Utility-first CSS
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) (via CDN) - Utility-first CSS for rapid development
 - **Fonts**: [Google Fonts](https://fonts.google.com/) - Typography options
 
 ## Development
@@ -130,7 +133,7 @@ Emblemic/
 
 ### Available Scripts
 
-- `npm run dev` - Start development server on port 3000
+- `npm run dev` - Start development server on port 3000 (configurable in vite.config.ts)
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build locally
 
