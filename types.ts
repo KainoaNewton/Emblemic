@@ -1,3 +1,4 @@
+
 import { LucideIcon } from 'lucide-react';
 
 export type ContentMode = 'icon' | 'text' | 'pixel' | 'image';
@@ -21,7 +22,7 @@ export interface IconConfig {
   solidColor: string;
   gradientStart: string;
   gradientEnd: string;
-  gradientAngle: number; // for linear
+  gradientAngle: number;
   noiseOpacity: number;
   radialGlareOpacity: number;
   
@@ -43,6 +44,7 @@ export interface IconConfig {
   pixelGrid: PixelGrid;
   pixelColor: string;
   pixelSize: number;
+  pixelRounding: number; // 0-100
 
   // Image Mode
   imageSrc: string | null;
