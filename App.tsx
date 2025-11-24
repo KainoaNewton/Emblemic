@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Download, Undo2, Redo2, Layers, Search, 
   ChevronDown, Type, Image as ImageIcon, Grid3X3, 
@@ -27,6 +27,13 @@ interface SavedFile {
 
 type ExportFormat = 'png' | 'jpg' | 'webp' | 'svg';
 type ExportScope = 'full' | 'content';
+
+interface PendingCrop {
+    originalSrc: string;
+    croppedSrc: string;
+    whitespaceRatio: number;
+    fileName: string;
+}
 
 // --- UI Helper Components ---
 
@@ -317,6 +324,76 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, fi
     );
 };
 
+// --- Crop Suggestion Modal ---
+
+interface CropSuggestionModalProps {
+    pending: PendingCrop | null;
+    onAcceptCrop: () => void;
+    onSkip: () => void;
+}
+
+const CropSuggestionModal: React.FC<CropSuggestionModalProps> = ({ pending, onAcceptCrop, onSkip }) => {
+    if (!pending) return null;
+
+    const whitespacePercent = Math.round(pending.whitespaceRatio * 100);
+
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/5 animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6 space-y-6">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                            <h2 className="text-lg font-semibold text-white">Trim transparent padding?</h2>
+                            <p className="text-sm text-zinc-400 max-w-xl">
+                                We noticed about {whitespacePercent}% of this image is transparent padding. Crop it so your upload fills the frame?
+                            </p>
+                        </div>
+                        <button
+                            onClick={onSkip}
+                            className="p-2 -mr-2 rounded-md text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                            title="Keep image as-is"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-zinc-950 border border-white/5 rounded-xl p-3 flex flex-col gap-3">
+                            <div className="text-xs font-semibold text-zinc-300">Original</div>
+                            <div className="aspect-square rounded-lg bg-zinc-900 border border-white/5 flex items-center justify-center overflow-hidden">
+                                <img src={pending.originalSrc} alt="Original upload" className="object-contain max-h-full" />
+                            </div>
+                        </div>
+                        <div className="bg-zinc-950 border border-white/5 rounded-xl p-3 flex flex-col gap-3">
+                            <div className="text-xs font-semibold text-zinc-300">Cropped preview</div>
+                            <div className="aspect-square rounded-lg bg-zinc-900 border border-white/5 flex items-center justify-center overflow-hidden">
+                                <img src={pending.croppedSrc} alt="Cropped preview" className="object-contain max-h-full" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                            onClick={onAcceptCrop}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-white text-black hover:bg-zinc-200 font-semibold text-sm transition-all"
+                        >
+                            <Check size={16} />
+                            Crop away the whitespace
+                        </button>
+                        <button
+                            onClick={onSkip}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-white/10 text-zinc-200 hover:border-white/30 hover:bg-white/5 font-semibold text-sm transition-all"
+                        >
+                            <X size={16} />
+                            Keep original
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 
 // --- Main App ---
@@ -337,7 +414,9 @@ export default function App() {
                     ...INITIAL_CONFIG,
                     ...f.config,
                     imageSize: f.config.imageSize || (f.config.imageScale ? 256 : INITIAL_CONFIG.imageSize),
-                    radialGlareOpacity: f.config.radialGlareOpacity ?? 0
+                    imageColor: f.config.imageColor || INITIAL_CONFIG.imageColor,
+                    radialGlareOpacity: f.config.radialGlareOpacity ?? 0,
+                    backgroundTransitioning: false,
                 }
             }));
             
@@ -381,6 +460,105 @@ export default function App() {
   
   // Export State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const dragCounterRef = useRef(0);
+  const [pendingCrop, setPendingCrop] = useState<PendingCrop | null>(null);
+
+  const applyImageSource = useCallback((src: string) => {
+    setHistory((curr) => ({
+        past: [...curr.past, curr.present],
+        present: { 
+            ...curr.present, 
+            mode: 'image', 
+            imageSrc: src,
+            imageColor: curr.present.imageColor || INITIAL_CONFIG.imageColor
+        },
+        future: []
+    }));
+  }, []);
+
+  const detectTransparentWhitespace = (img: HTMLImageElement) => {
+    const width = img.naturalWidth;
+    const height = img.naturalHeight;
+    if (!width || !height) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+
+    const { data } = ctx.getImageData(0, 0, width, height);
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4 + 3; // alpha channel
+            const alpha = data[idx];
+            if (alpha > 5) {
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    // No visible pixels
+    if (maxX === -1 || maxY === -1) return null;
+
+    const contentWidth = maxX - minX + 1;
+    const contentHeight = maxY - minY + 1;
+    const whitespaceArea = width * height - contentWidth * contentHeight;
+    const whitespaceRatio = whitespaceArea / (width * height);
+
+    // Only suggest trimming if there is notable transparent padding (>8%)
+    const hasMeaningfulWhitespace = whitespaceRatio > 0.08 && (width - contentWidth > 6 || height - contentHeight > 6);
+    if (!hasMeaningfulWhitespace) return null;
+
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = contentWidth;
+    cropCanvas.height = contentHeight;
+    const cropCtx = cropCanvas.getContext('2d');
+    if (!cropCtx) return null;
+    cropCtx.drawImage(img, -minX, -minY);
+    const croppedSrc = cropCanvas.toDataURL('image/png');
+
+    return { croppedSrc, whitespaceRatio };
+  };
+
+  const handleImageFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        if (event.target?.result) {
+            const src = event.target.result as string;
+            const isSvg = src.startsWith('data:image/svg');
+            
+            // Skip cropping analysis for SVGs to preserve them as SVGs
+            if (isSvg) {
+                applyImageSource(src);
+            } else {
+                const img = new Image();
+                img.onload = () => {
+                    const analysis = detectTransparentWhitespace(img);
+                    if (analysis) {
+                        setPendingCrop({
+                            originalSrc: src,
+                            croppedSrc: analysis.croppedSrc,
+                            whitespaceRatio: analysis.whitespaceRatio,
+                            fileName: file.name
+                        });
+                    } else {
+                        applyImageSource(src);
+                    }
+                };
+                img.src = src;
+            }
+        }
+    };
+    reader.readAsDataURL(file);
+  }, [applyImageSource]);
 
   // --- Persistence Effects ---
 
@@ -636,20 +814,78 @@ export default function App() {
     };
   }, [isZoomMenuOpen, isFilesMenuOpen]);
 
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
+    const handleDragEnter = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounterRef.current += 1;
+        setIsDraggingFile(true);
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = 'copy';
+        }
+        setIsDraggingFile(true);
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+        if (dragCounterRef.current === 0) {
+            setIsDraggingFile(false);
+        }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounterRef.current = 0;
+        setIsDraggingFile(false);
+
+        const imageFile = Array.from(e.dataTransfer?.files || []).find((file) => file.type.startsWith('image/'));
+        if (imageFile) {
+            handleImageFile(imageFile);
+        }
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+
+    return () => {
+        window.removeEventListener('dragenter', handleDragEnter);
+        window.removeEventListener('dragover', handleDragOver);
+        window.removeEventListener('dragleave', handleDragLeave);
+        window.removeEventListener('drop', handleDrop);
+    };
+  }, [handleImageFile]);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            if (event.target?.result) {
-                updateConfig({ imageSrc: event.target.result as string });
-            }
-        };
-        reader.readAsDataURL(file);
+        handleImageFile(file);
     }
     // Reset input so same file can be selected again
     e.target.value = '';
   };
+
+  const handleAcceptCrop = useCallback(() => {
+    if (!pendingCrop) return;
+    applyImageSource(pendingCrop.croppedSrc);
+    setPendingCrop(null);
+  }, [applyImageSource, pendingCrop]);
+
+  const handleSkipCrop = useCallback(() => {
+    if (!pendingCrop) return;
+    applyImageSource(pendingCrop.originalSrc);
+    setPendingCrop(null);
+  }, [applyImageSource, pendingCrop]);
 
 
   // --- Export Logic ---
@@ -716,14 +952,31 @@ export default function App() {
             contentSvg = `<g>${rects}</g>`;
         } else if (config.mode === 'image' && config.imageSrc) {
             const drawSize = config.imageSize;
-            contentSvg = `<image 
-                href="${config.imageSrc}" 
-                x="${(ICON_SIZE - drawSize)/2}" 
-                y="${(ICON_SIZE - drawSize)/2 + config.imageOffsetY}" 
-                width="${drawSize}" 
-                height="${drawSize}" 
-                preserveAspectRatio="xMidYMid meet"
-            />`;
+            const isSvg = config.imageSrc.startsWith('data:image/svg');
+            
+            if (isSvg) {
+                // For SVG images, we can apply a color filter
+                contentSvg = `<g style="color: ${config.imageColor};">
+                    <image 
+                        href="${config.imageSrc}" 
+                        x="${(ICON_SIZE - drawSize)/2}" 
+                        y="${(ICON_SIZE - drawSize)/2 + config.imageOffsetY}" 
+                        width="${drawSize}" 
+                        height="${drawSize}" 
+                        preserveAspectRatio="xMidYMid meet"
+                        style="fill: currentColor; color: ${config.imageColor};"
+                    />
+                </g>`;
+            } else {
+                contentSvg = `<image 
+                    href="${config.imageSrc}" 
+                    x="${(ICON_SIZE - drawSize)/2}" 
+                    y="${(ICON_SIZE - drawSize)/2 + config.imageOffsetY}" 
+                    width="${drawSize}" 
+                    height="${drawSize}" 
+                    preserveAspectRatio="xMidYMid meet"
+                />`;
+            }
         }
 
         // 2. Assemble Final SVG
@@ -911,6 +1164,8 @@ export default function App() {
         }
     } else if (config.mode === 'image' && config.imageSrc) {
         const img = new Image();
+        const isSvg = config.imageSrc.startsWith('data:image/svg');
+        
         await new Promise((resolve) => {
             img.onload = resolve;
             img.src = config.imageSrc!;
@@ -930,13 +1185,31 @@ export default function App() {
 
         const offsetY = config.imageOffsetY * scaleFactor;
         
-        ctx.drawImage(
-            img, 
-            -w / 2, 
-            -h / 2 + offsetY, 
-            w, 
-            h
-        );
+        if (isSvg) {
+            // For SVG images, apply color tinting
+            // First draw the image normally
+            ctx.drawImage(
+                img, 
+                -w / 2, 
+                -h / 2 + offsetY, 
+                w, 
+                h
+            );
+            
+            // Then apply color overlay using composite operation
+            ctx.globalCompositeOperation = 'source-in';
+            ctx.fillStyle = config.imageColor;
+            ctx.fillRect(-w / 2, -h / 2 + offsetY, w, h);
+            ctx.globalCompositeOperation = 'source-over';
+        } else {
+            ctx.drawImage(
+                img, 
+                -w / 2, 
+                -h / 2 + offsetY, 
+                w, 
+                h
+            );
+        }
     }
 
     ctx.restore();
@@ -985,14 +1258,30 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-black text-zinc-300 font-sans overflow-hidden">
-      
+
       {/* Export Modal */}
-      <ExportModal 
-        isOpen={isExportModalOpen} 
-        onClose={() => setIsExportModalOpen(false)} 
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
         onExport={processExport}
         filename={filename}
       />
+
+      <CropSuggestionModal
+        pending={pendingCrop}
+        onAcceptCrop={handleAcceptCrop}
+        onSkip={handleSkipCrop}
+      />
+
+      {isDraggingFile && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+            <div className="pointer-events-none flex flex-col items-center gap-3 px-6 py-5 bg-zinc-900/80 border border-white/10 rounded-2xl shadow-2xl text-center">
+                <Upload className="w-8 h-8 text-zinc-200" />
+                <div className="text-sm font-semibold text-white">Drop image to upload</div>
+                <p className="text-xs text-zinc-400 max-w-xs">We will switch to the Upload tab and use your dropped image.</p>
+            </div>
+        </div>
+      )}
 
       {/* --- HEADER --- */}
       <header className="h-14 bg-zinc-950/80 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-50 shrink-0">
@@ -1500,6 +1789,9 @@ export default function App() {
                      <Section title="Image Settings">
                         <NumberInput label="Size" value={config.imageSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ imageSize: v })} />
                         <NumberInput label="Vertical Offset" value={config.imageOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ imageOffsetY: v })} />
+                        {config.imageSrc && config.imageSrc.startsWith('data:image/svg') && (
+                            <ColorInput label="Image Color" value={config.imageColor} onChange={(v) => updateConfig({ imageColor: v })} />
+                        )}
                      </Section>
                  )}
             </div>
