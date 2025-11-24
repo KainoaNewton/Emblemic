@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Download, Undo2, Redo2, Layers, Search, 
   ChevronDown, Type, Image as ImageIcon, Grid3X3, 
@@ -381,6 +381,22 @@ export default function App() {
   
   // Export State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const handleImageFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        if (event.target?.result) {
+            setHistory((curr) => ({
+                past: [...curr.past, curr.present],
+                present: { ...curr.present, mode: 'image', imageSrc: event.target?.result as string },
+                future: []
+            }));
+        }
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
   // --- Persistence Effects ---
 
@@ -636,16 +652,62 @@ export default function App() {
     };
   }, [isZoomMenuOpen, isFilesMenuOpen]);
 
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
+    const handleDragEnter = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounterRef.current += 1;
+        setIsDraggingFile(true);
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = 'copy';
+        }
+        setIsDraggingFile(true);
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+        if (dragCounterRef.current === 0) {
+            setIsDraggingFile(false);
+        }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounterRef.current = 0;
+        setIsDraggingFile(false);
+
+        const imageFile = Array.from(e.dataTransfer?.files || []).find((file) => file.type.startsWith('image/'));
+        if (imageFile) {
+            handleImageFile(imageFile);
+        }
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+
+    return () => {
+        window.removeEventListener('dragenter', handleDragEnter);
+        window.removeEventListener('dragover', handleDragOver);
+        window.removeEventListener('dragleave', handleDragLeave);
+        window.removeEventListener('drop', handleDrop);
+    };
+  }, [handleImageFile]);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            if (event.target?.result) {
-                updateConfig({ imageSrc: event.target.result as string });
-            }
-        };
-        reader.readAsDataURL(file);
+        handleImageFile(file);
     }
     // Reset input so same file can be selected again
     e.target.value = '';
@@ -985,14 +1047,24 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-black text-zinc-300 font-sans overflow-hidden">
-      
+
       {/* Export Modal */}
-      <ExportModal 
+      <ExportModal
         isOpen={isExportModalOpen} 
         onClose={() => setIsExportModalOpen(false)} 
         onExport={processExport}
         filename={filename}
       />
+
+      {isDraggingFile && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+            <div className="pointer-events-none flex flex-col items-center gap-3 px-6 py-5 bg-zinc-900/80 border border-white/10 rounded-2xl shadow-2xl text-center">
+                <Upload className="w-8 h-8 text-zinc-200" />
+                <div className="text-sm font-semibold text-white">Drop image to upload</div>
+                <p className="text-xs text-zinc-400 max-w-xs">We will switch to the Upload tab and use your dropped image.</p>
+            </div>
+        </div>
+      )}
 
       {/* --- HEADER --- */}
       <header className="h-14 bg-zinc-950/80 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-50 shrink-0">
