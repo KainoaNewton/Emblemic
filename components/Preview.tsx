@@ -20,7 +20,6 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
     gradientStart,
     gradientEnd,
     gradientAngle,
-    backgroundTransitioning,
     noiseOpacity,
     radialGlareOpacity,
     selectedIconName,
@@ -52,15 +51,6 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
     return { background: bg };
   }, [backgroundType, solidColor, gradientStart, gradientEnd, gradientAngle]);
 
-  const backgroundTransitionStyle = useMemo(
-    () => ({
-      transition: 'opacity 200ms ease',
-      opacity: backgroundTransitioning ? 0.85 : 1,
-      willChange: 'opacity',
-    }),
-    [backgroundTransitioning]
-  );
-
   // Get Lucide Icon
   const LucideIcon = (Icons as any)[selectedIconName];
 
@@ -69,7 +59,7 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
       {/* Shadow for depth perception (not exported) */}
       <div
         className="absolute inset-4 blur-2xl opacity-40 rounded-full transition-all duration-500 group-hover:opacity-60 group-hover:blur-3xl"
-        style={{ ...backgroundStyle, ...backgroundTransitionStyle }}
+        style={backgroundStyle}
       />
 
       {/* Main Icon Container */}
@@ -80,7 +70,6 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
           width: `${PREVIEW_SIZE}px`,
           height: `${PREVIEW_SIZE}px`,
           ...backgroundStyle,
-          ...backgroundTransitionStyle,
           // Approximate iOS Squircle with CSS for display
           borderRadius: '22%',
         }}
