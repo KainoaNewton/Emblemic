@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Download, Undo2, Redo2, Layers, Search, 
   ChevronDown, Type, Image as ImageIcon, Grid3X3, 
-  Plus, Check, Trash2, File, X, Upload
+  Plus, Minus, Check, Trash2, File, X, Upload
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import Preview from './components/Preview';
@@ -538,14 +538,42 @@ export default function App() {
     });
   };
 
+  // --- Keyboard Shortcuts (Undo/Redo & Zoom) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+      const target = e.target as HTMLElement;
+      // Check if user is typing in an input field
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // Global Shortcuts (Undo/Redo)
+      // Allow undo/redo even in inputs as they drive global state in this app
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
           handleRedo();
         } else {
           handleUndo();
+        }
+        return;
+      }
+
+      // View Shortcuts (Zoom)
+      // Disable when typing in inputs to prevent accidental zooms while typing symbols
+      if (!isInput) {
+        if (e.key === '=' || e.key === '+') {
+            e.preventDefault();
+            setViewZoom(prev => {
+                const next = Math.min(prev + 0.25, 5);
+                return Math.round(next * 100) / 100;
+            });
+        }
+        
+        if (e.key === '-' || e.key === '_') {
+            e.preventDefault();
+            setViewZoom(prev => {
+                const next = Math.max(prev - 0.25, 0.1);
+                return Math.round(next * 100) / 100;
+            });
         }
       }
     };
@@ -904,6 +932,20 @@ export default function App() {
     }
   };
 
+  const handleZoomIn = () => {
+    setViewZoom(prev => {
+        const next = Math.min(prev + 0.25, 5);
+        return Math.round(next * 100) / 100;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setViewZoom(prev => {
+        const next = Math.max(prev - 0.25, 0.1);
+        return Math.round(next * 100) / 100;
+    });
+  };
+
   const ZOOM_OPTIONS = [0.25, 0.5, 0.75, 1, 2];
 
   return (
@@ -1205,7 +1247,7 @@ export default function App() {
             />
             
             <div 
-                className="flex flex-col items-center justify-center transition-transform duration-75 ease-out origin-center will-change-transform"
+                className="flex flex-col items-center justify-center transition-transform duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] origin-center will-change-transform"
                 style={{ transform: `scale(${viewZoom})` }}
             >
                  <div className="relative z-10 drop-shadow-2xl" id="preview-export-target">
@@ -1219,37 +1261,48 @@ export default function App() {
             </div>
 
             {/* Bottom Right Zoom Control */}
-            <div className="absolute bottom-6 right-6 z-50" id="zoom-control">
-                {isZoomMenuOpen && (
-                    <div className="absolute bottom-full right-0 mb-2 w-32 bg-zinc-900 border border-white/10 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
-                        {ZOOM_OPTIONS.map((option) => (
-                            <button
-                                key={option}
-                                onClick={() => {
-                                    setViewZoom(option);
-                                    setIsZoomMenuOpen(false);
-                                }}
-                                className="flex items-center justify-between w-full px-4 py-2 text-xs text-left hover:bg-zinc-800 transition-colors"
-                            >
-                                <span className={viewZoom === option ? 'text-white' : 'text-zinc-400'}>
-                                    {Math.round(option * 100)}%
-                                </span>
-                                {viewZoom === option && <Check size={12} className="text-blue-500" />}
-                            </button>
-                        ))}
-                    </div>
-                )}
+            <div className="absolute bottom-6 right-6 z-50 flex items-center bg-zinc-900 border border-white/10 rounded-lg shadow-xl" id="zoom-control">
                 <button
-                    onClick={() => setIsZoomMenuOpen(!isZoomMenuOpen)}
-                    className="flex items-center gap-2 bg-zinc-900 border border-white/10 hover:bg-zinc-800 hover:border-white/20 px-3 py-2 rounded-md shadow-xl transition-all group min-w-[80px] justify-between"
+                    onClick={handleZoomOut}
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-l-lg transition-colors border-r border-white/5"
+                    title="Zoom Out"
                 >
-                    <span className="text-xs font-medium text-zinc-400 group-hover:text-zinc-200 tabular-nums">
+                    <Minus size={14} />
+                </button>
+                
+                <div className="relative border-r border-white/5">
+                    {isZoomMenuOpen && (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-24 bg-zinc-900 border border-white/10 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+                            {ZOOM_OPTIONS.map((option) => (
+                                <button
+                                    key={option}
+                                    onClick={() => {
+                                        setViewZoom(option);
+                                        setIsZoomMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-center w-full px-2 py-1.5 text-xs hover:bg-zinc-800 transition-colors"
+                                >
+                                    <span className={viewZoom === option ? 'text-white font-medium' : 'text-zinc-400'}>
+                                        {Math.round(option * 100)}%
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <button
+                        onClick={() => setIsZoomMenuOpen(!isZoomMenuOpen)}
+                        className="flex items-center justify-center w-16 py-2 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+                    >
                         {Math.round(viewZoom * 100)}%
-                    </span>
-                    <ChevronDown 
-                        size={14} 
-                        className={`text-zinc-600 group-hover:text-zinc-400 transition-transform duration-200 ${isZoomMenuOpen ? 'rotate-180' : ''}`} 
-                    />
+                    </button>
+                </div>
+
+                <button
+                    onClick={handleZoomIn}
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-r-lg transition-colors"
+                    title="Zoom In"
+                >
+                    <Plus size={14} />
                 </button>
             </div>
         </main>
