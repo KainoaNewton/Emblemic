@@ -6,7 +6,6 @@ import { Eraser, Pencil, Trash2 } from 'lucide-react';
 interface PixelEditorProps {
   grid: PixelGrid;
   color: string;
-  showGrid: boolean;
   onChange: (newGrid: PixelGrid) => void;
   onColorChange: (color: string) => void;
 }
@@ -14,7 +13,6 @@ interface PixelEditorProps {
 const PixelEditor: React.FC<PixelEditorProps> = ({
   grid,
   color,
-  showGrid,
   onChange,
   onColorChange,
 }) => {
@@ -101,7 +99,7 @@ const PixelEditor: React.FC<PixelEditorProps> = ({
       {/* Grid Container */}
       <div className="flex items-center justify-center bg-zinc-900/50 rounded-lg border border-white/5 p-4 overflow-hidden shadow-inner">
         <div
-          className="grid gap-px bg-zinc-800 border border-zinc-800 select-none touch-none shadow-xl"
+          className="grid bg-zinc-700 gap-px border border-zinc-700 select-none touch-none shadow-xl"
           style={{
             gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
             width: '100%',
@@ -115,14 +113,10 @@ const PixelEditor: React.FC<PixelEditorProps> = ({
               onMouseDown={() => handleMouseDown(i)}
               onMouseEnter={() => handleMouseEnter(i)}
               className={`relative cursor-crosshair transition-colors duration-75 ${
-                cellColor ? '' : 'bg-zinc-950/50'
+                cellColor ? '' : 'bg-zinc-900'
               }`}
               style={{ backgroundColor: cellColor || undefined }}
-            >
-                 {showGrid && !cellColor && (
-                    <div className="absolute inset-0 border border-white/5 pointer-events-none" />
-                 )}
-            </div>
+            />
           ))}
         </div>
       </div>
