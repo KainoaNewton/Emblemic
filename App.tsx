@@ -528,6 +528,102 @@ export default function App() {
     return { croppedSrc, whitespaceRatio };
   };
 
+  // Helper function to crop transparent whitespace from a canvas
+  const cropCanvasWhitespace = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const { data } = ctx.getImageData(0, 0, width, height);
+    
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+
+    // Find the bounds of non-transparent pixels
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4 + 3; // alpha channel
+            const alpha = data[idx];
+            if (alpha > 5) {
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    // No visible pixels, return original canvas
+    if (maxX === -1 || maxY === -1) return canvas;
+
+    const contentWidth = maxX - minX + 1;
+    const contentHeight = maxY - minY + 1;
+
+    // If there's no whitespace to crop, return original canvas
+    if (contentWidth === width && contentHeight === height) return canvas;
+
+    // Create a new canvas with cropped dimensions
+    const croppedCanvas = document.createElement('canvas');
+    croppedCanvas.width = contentWidth;
+    croppedCanvas.height = contentHeight;
+    const croppedCtx = croppedCanvas.getContext('2d');
+    if (!croppedCtx) return canvas;
+
+    // Draw the cropped portion
+    croppedCtx.drawImage(canvas, minX, minY, contentWidth, contentHeight, 0, 0, contentWidth, contentHeight);
+
+    return croppedCanvas;
+  };
+
+  // Helper function to compute content bounding box for SVG cropping
+  const computeContentBounds = (): { minX: number; minY: number; maxX: number; maxY: number } | null => {
+    if (config.mode === 'icon') {
+      const iconDrawSize = config.iconSize;
+      const x = (ICON_SIZE - iconDrawSize) / 2;
+      const y = (ICON_SIZE - iconDrawSize) / 2 + config.iconOffsetY;
+      return {
+        minX: x,
+        minY: y,
+        maxX: x + iconDrawSize,
+        maxY: y + iconDrawSize
+      };
+    } else if (config.mode === 'text') {
+      // For text, estimate bounds based on font size
+      // This is approximate; true bounds would require measuring text
+      const estimatedWidth = config.textSize * config.textContent.length * 0.6;
+      const estimatedHeight = config.textSize * 1.2;
+      const x = (ICON_SIZE - estimatedWidth) / 2;
+      const y = (ICON_SIZE - estimatedHeight) / 2 + config.textOffsetY;
+      return {
+        minX: Math.max(0, x),
+        minY: Math.max(0, y),
+        maxX: Math.min(ICON_SIZE, x + estimatedWidth),
+        maxY: Math.min(ICON_SIZE, y + estimatedHeight)
+      };
+    } else if (config.mode === 'pixel') {
+      const drawSize = config.pixelSize;
+      const x = (ICON_SIZE - drawSize) / 2;
+      const y = (ICON_SIZE - drawSize) / 2;
+      return {
+        minX: x,
+        minY: y,
+        maxX: x + drawSize,
+        maxY: y + drawSize
+      };
+    } else if (config.mode === 'image') {
+      const drawSize = config.imageSize;
+      const x = (ICON_SIZE - drawSize) / 2;
+      const y = (ICON_SIZE - drawSize) / 2 + config.imageOffsetY;
+      return {
+        minX: x,
+        minY: y,
+        maxX: x + drawSize,
+        maxY: y + drawSize
+      };
+    }
+    return null;
+  };
+
   const handleImageFile = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -1034,10 +1130,31 @@ export default function App() {
                 </g>
              </svg>`;
         } else {
-             // Transparent / No background
-             fullSvg = `<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="${svgNs}">
-                ${contentSvg}
-             </svg>`;
+             // Transparent / No background - crop to content bounds
+             const bounds = computeContentBounds();
+             if (bounds) {
+                 const contentWidth = bounds.maxX - bounds.minX;
+                 const contentHeight = bounds.maxY - bounds.minY;
+                 const aspectRatio = contentWidth / contentHeight;
+                 
+                 // Determine final dimensions maintaining aspect ratio
+                 let finalWidth = size;
+                 let finalHeight = size;
+                 if (aspectRatio > 1) {
+                     finalHeight = size / aspectRatio;
+                 } else if (aspectRatio < 1) {
+                     finalWidth = size * aspectRatio;
+                 }
+                 
+                 fullSvg = `<svg width="${Math.round(finalWidth)}" height="${Math.round(finalHeight)}" viewBox="${bounds.minX} ${bounds.minY} ${contentWidth} ${contentHeight}" xmlns="${svgNs}">
+                   ${contentSvg}
+                 </svg>`;
+             } else {
+                 // Fallback if bounds can't be computed
+                 fullSvg = `<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="${svgNs}">
+                   ${contentSvg}
+                 </svg>`;
+             }
         }
 
         const blob = new Blob([fullSvg], { type: 'image/svg+xml;charset=utf-8' });
@@ -1217,11 +1334,17 @@ export default function App() {
 
     ctx.restore();
 
-    // 3. Trigger Download
+    // 3. Crop whitespace if exporting without background
+    let finalCanvas = canvas;
+    if (!withBg) {
+        finalCanvas = cropCanvasWhitespace(canvas);
+    }
+
+    // 4. Trigger Download
     const link = document.createElement('a');
     link.download = filenameWithExt;
     const mimeType = format === 'jpg' ? 'image/jpeg' : `image/${format}`;
-    link.href = canvas.toDataURL(mimeType, 0.9);
+    link.href = finalCanvas.toDataURL(mimeType, 0.9);
     link.click();
     
     setIsExportModalOpen(false);
