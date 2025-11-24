@@ -43,6 +43,7 @@ export interface IconConfig {
   pixelGrid: PixelGrid;
   pixelColor: string;
   pixelSize: number;
+  pixelRounding: boolean;
 
   // Image Mode
   imageSrc: string | null;

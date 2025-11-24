@@ -139,6 +139,7 @@ export const INITIAL_CONFIG: IconConfig = {
     },
     pixelColor: '#ffffff',
     pixelSize: 256,
+    pixelRounding: false,
     imageSrc: null,
     imageSize: 256,
     imageOffsetY: 0,

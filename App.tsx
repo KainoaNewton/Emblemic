@@ -396,6 +396,35 @@ const CropSuggestionModal: React.FC<CropSuggestionModalProps> = ({ pending, onAc
 
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 
+// Helper function to calculate which corners should be rounded for smart pixel rounding
+const getSmartRoundedCornersForPixel = (grid: PixelGrid, index: number): { topLeft: boolean, topRight: boolean, bottomLeft: boolean, bottomRight: boolean } => {
+  const { cols, rows, data } = grid;
+  const row = Math.floor(index / cols);
+  const col = index % cols;
+  
+  // Check if neighboring pixels exist
+  const hasTop = row > 0 && data[index - cols];
+  const hasBottom = row < rows - 1 && data[index + cols];
+  const hasLeft = col > 0 && data[index - 1];
+  const hasRight = col < cols - 1 && data[index + 1];
+  
+  // Check diagonal neighbors
+  const hasTopLeft = row > 0 && col > 0 && data[index - cols - 1];
+  const hasTopRight = row > 0 && col < cols - 1 && data[index - cols + 1];
+  const hasBottomLeft = row < rows - 1 && col > 0 && data[index + cols - 1];
+  const hasBottomRight = row < rows - 1 && col < cols - 1 && data[index + cols + 1];
+  
+  // A corner is rounded if:
+  // 1. The adjacent sides are not connected, OR
+  // 2. Both adjacent sides are connected but the diagonal is not
+  return {
+    topLeft: (!hasTop && !hasLeft) || (hasTop && hasLeft && !hasTopLeft),
+    topRight: (!hasTop && !hasRight) || (hasTop && hasRight && !hasTopRight),
+    bottomLeft: (!hasBottom && !hasLeft) || (hasBottom && hasLeft && !hasBottomLeft),
+    bottomRight: (!hasBottom && !hasRight) || (hasBottom && hasRight && !hasBottomRight),
+  };
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -416,6 +445,7 @@ export default function App() {
                     imageSize: f.config.imageSize || (f.config.imageScale ? 256 : INITIAL_CONFIG.imageSize),
                     imageColor: f.config.imageColor || INITIAL_CONFIG.imageColor,
                     radialGlareOpacity: f.config.radialGlareOpacity ?? 0,
+                    pixelRounding: f.config.pixelRounding ?? false,
                     backgroundTransitioning: false,
                 }
             }));
@@ -946,7 +976,35 @@ export default function App() {
                 if (color) {
                     const r = Math.floor(i / gridSize);
                     const c = i % gridSize;
-                    rects += `<rect x="${startX + c * cellSize}" y="${startY + r * cellSize}" width="${cellSize + 0.1}" height="${cellSize + 0.1}" fill="${color}" />`;
+                    const x = startX + c * cellSize;
+                    const y = startY + r * cellSize;
+                    
+                    if (config.pixelRounding) {
+                        // Use rounded corners with smart detection
+                        const corners = getSmartRoundedCornersForPixel(config.pixelGrid, i);
+                        const radius = cellSize * 0.25; // 25% corner radius
+                        
+                        // Generate path with selective rounded corners
+                        const tl = corners.topLeft ? radius : 0;
+                        const tr = corners.topRight ? radius : 0;
+                        const br = corners.bottomRight ? radius : 0;
+                        const bl = corners.bottomLeft ? radius : 0;
+                        
+                        // Create a path with individual corner radii
+                        const path = `M ${x + tl},${y} 
+                                     L ${x + cellSize - tr},${y} 
+                                     Q ${x + cellSize},${y} ${x + cellSize},${y + tr} 
+                                     L ${x + cellSize},${y + cellSize - br} 
+                                     Q ${x + cellSize},${y + cellSize} ${x + cellSize - br},${y + cellSize} 
+                                     L ${x + bl},${y + cellSize} 
+                                     Q ${x},${y + cellSize} ${x},${y + cellSize - bl} 
+                                     L ${x},${y + tl} 
+                                     Q ${x},${y} ${x + tl},${y} Z`;
+                        rects += `<path d="${path}" fill="${color}" />`;
+                    } else {
+                        // Regular rectangular pixels
+                        rects += `<rect x="${x}" y="${y}" width="${cellSize + 0.1}" height="${cellSize + 0.1}" fill="${color}" />`;
+                    }
                 }
             });
             contentSvg = `<g>${rects}</g>`;
@@ -1140,8 +1198,40 @@ export default function App() {
             if (color) {
                 const r = Math.floor(i / gridSize);
                 const c = i % gridSize;
+                const x = startX + c * cellSize;
+                const y = startY + r * cellSize;
+                
                 ctx.fillStyle = color;
-                ctx.fillRect(startX + c * cellSize, startY + r * cellSize, cellSize + 1, cellSize + 1);
+                
+                if (config.pixelRounding) {
+                    // Draw with smart rounded corners
+                    const corners = getSmartRoundedCornersForPixel(config.pixelGrid, i);
+                    const radius = cellSize * 0.25; // 25% corner radius
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(x + (corners.topLeft ? radius : 0), y);
+                    ctx.lineTo(x + cellSize - (corners.topRight ? radius : 0), y);
+                    if (corners.topRight) {
+                        ctx.quadraticCurveTo(x + cellSize, y, x + cellSize, y + radius);
+                    }
+                    ctx.lineTo(x + cellSize, y + cellSize - (corners.bottomRight ? radius : 0));
+                    if (corners.bottomRight) {
+                        ctx.quadraticCurveTo(x + cellSize, y + cellSize, x + cellSize - radius, y + cellSize);
+                    }
+                    ctx.lineTo(x + (corners.bottomLeft ? radius : 0), y + cellSize);
+                    if (corners.bottomLeft) {
+                        ctx.quadraticCurveTo(x, y + cellSize, x, y + cellSize - radius);
+                    }
+                    ctx.lineTo(x, y + (corners.topLeft ? radius : 0));
+                    if (corners.topLeft) {
+                        ctx.quadraticCurveTo(x, y, x + radius, y);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Regular rectangular pixels
+                    ctx.fillRect(x, y, cellSize + 1, cellSize + 1);
+                }
             }
         });
     } else if (config.mode === 'icon') {
@@ -1785,6 +1875,22 @@ export default function App() {
                  {config.mode === 'pixel' && (
                      <Section title="Pixel Settings">
                         <NumberInput label="Render Size" value={config.pixelSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ pixelSize: v })} />
+                        <div className="pt-3 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-medium text-zinc-400">Smart Rounding</span>
+                                <button 
+                                    onClick={() => updateConfig({ pixelRounding: !config.pixelRounding })}
+                                    className={`w-9 h-5 rounded-full relative transition-colors ${config.pixelRounding ? 'bg-blue-600' : 'bg-zinc-700'}`}
+                                >
+                                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-transform duration-200 shadow-sm ${config.pixelRounding ? 'translate-x-5' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                            {config.pixelRounding && (
+                                <div className="text-[10px] text-zinc-500 pl-1 animate-in slide-in-from-top-1 fade-in duration-200">
+                                    Rounds corners that aren't connected to other pixels
+                                </div>
+                            )}
+                        </div>
                      </Section>
                  )}
 
