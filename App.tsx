@@ -8,7 +8,7 @@ import {
 import * as LucideIcons from 'lucide-react';
 import Preview from './components/Preview';
 import PixelEditor from './components/PixelEditor';
-import { IconConfig, Preset, ContentMode } from './types';
+import { IconConfig, Preset, ContentMode, PixelGrid } from './types';
 import { FONTS, PRESETS, INITIAL_PIXEL_GRID_SIZE, INITIAL_CONFIG, ICON_SIZE, SQUIRCLE_PATH } from './constants';
 
 // --- Types ---
@@ -48,7 +48,8 @@ const NumberInput = ({
   step = 1, 
   min, 
   max, 
-  suffix 
+  suffix,
+  changeOnBlur = false
 }: { 
   value: number; 
   onChange: (val: number) => void; 
@@ -57,6 +58,7 @@ const NumberInput = ({
   min?: number; 
   max?: number; 
   suffix?: string;
+  changeOnBlur?: boolean;
 }) => {
   const [inputValue, setInputValue] = useState(value.toString());
 
@@ -68,9 +70,11 @@ const NumberInput = ({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
-    const parsed = parseFloat(e.target.value);
-    if (!isNaN(parsed)) {
-      onChange(parsed);
+    if (!changeOnBlur) {
+        const parsed = parseFloat(e.target.value);
+        if (!isNaN(parsed)) {
+            onChange(parsed);
+        }
     }
   };
 
@@ -510,6 +514,37 @@ export default function App() {
 
   const updateConfig = (updates: Partial<IconConfig>) => {
     pushToHistory({ ...config, ...updates });
+  };
+
+  const handleGridResize = (newSize: number) => {
+      // Enforce limits to prevent UI breakage or performance issues
+      const size = Math.max(4, Math.min(64, Math.round(newSize)));
+      const currentGrid = config.pixelGrid;
+      
+      if (size === currentGrid.cols) return;
+
+      const newData = new Array(size * size).fill('');
+      
+      // Attempt to preserve existing drawing (Top-Left Alignment)
+      // This prevents total data loss when resizing
+      const rowsToCopy = Math.min(currentGrid.rows, size);
+      const colsToCopy = Math.min(currentGrid.cols, size);
+      
+      for (let r = 0; r < rowsToCopy; r++) {
+          for (let c = 0; c < colsToCopy; c++) {
+              const oldIdx = r * currentGrid.cols + c;
+              const newIdx = r * size + c;
+              newData[newIdx] = currentGrid.data[oldIdx];
+          }
+      }
+      
+      updateConfig({ 
+          pixelGrid: {
+              rows: size,
+              cols: size,
+              data: newData
+          }
+      });
   };
 
   const handleUndo = () => {
@@ -1182,6 +1217,18 @@ export default function App() {
                                 onChange={(grid) => updateConfig({ pixelGrid: grid })}
                                 onColorChange={(color) => updateConfig({ pixelColor: color })}
                             />
+                            <div className="mt-3 pt-3 border-t border-white/5">
+                                <NumberInput 
+                                    label="Grid Resolution" 
+                                    value={config.pixelGrid.cols} 
+                                    min={4} 
+                                    max={64} 
+                                    step={1} 
+                                    suffix="px" 
+                                    onChange={handleGridResize}
+                                    changeOnBlur={true}
+                                />
+                            </div>
                         </Section>
                         <div className="bg-zinc-900/30 p-3 rounded-md border border-white/5 text-[10px] text-zinc-500">
                             Tip: Left click to draw, right click or use eraser to remove pixels.
@@ -1447,6 +1494,16 @@ export default function App() {
                  {config.mode === 'pixel' && (
                      <Section title="Pixel Settings">
                         <NumberInput label="Render Size" value={config.pixelSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ pixelSize: v })} />
+                        
+                        <div className="pt-2 flex items-center justify-between group">
+                             <ControlLabel>Show Grid Lines</ControlLabel>
+                             <button 
+                                onClick={() => updateConfig({ showGridLines: !config.showGridLines })}
+                                className={`w-9 h-5 rounded-full relative transition-colors ${config.showGridLines ? 'bg-blue-600' : 'bg-zinc-700'}`}
+                             >
+                                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-transform duration-200 shadow-sm ${config.showGridLines ? 'translate-x-5' : 'translate-x-1'}`} />
+                             </button>
+                        </div>
                      </Section>
                  )}
 
