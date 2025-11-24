@@ -242,18 +242,19 @@ const EffectControl = ({
 interface ExportModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onExport: (format: ExportFormat, scope: ExportScope) => void;
+    onExport: (format: ExportFormat, scope: ExportScope, size: number) => void;
     filename: string;
 }
 
 const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, filename }) => {
     const [format, setFormat] = useState<ExportFormat>('png');
     const [includeBackground, setIncludeBackground] = useState(true);
+    const [exportSize, setExportSize] = useState(512);
 
     if (!isOpen) return null;
 
     const handleExport = () => {
-        onExport(format, includeBackground ? 'full' : 'content');
+        onExport(format, includeBackground ? 'full' : 'content', exportSize);
     };
 
     return (
@@ -289,6 +290,26 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, fi
                                         }`}
                                     >
                                         {f}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Size Selection */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-400">Export Size</label>
+                            <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-950/50 rounded-lg border border-white/5">
+                                {[512, 1024, 2048, 4096].map((size) => (
+                                    <button
+                                        key={size}
+                                        onClick={() => setExportSize(size)}
+                                        className={`py-1.5 px-2 rounded-md text-[11px] font-bold transition-all ${
+                                            exportSize === size 
+                                            ? 'bg-zinc-800 text-white shadow-sm ring-1 ring-white/10' 
+                                            : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                                        }`}
+                                    >
+                                        {size}px
                                     </button>
                                 ))}
                             </div>
@@ -889,8 +910,7 @@ export default function App() {
 
 
   // --- Export Logic ---
-  const processExport = async (format: ExportFormat, scope: ExportScope) => {
-    const size = config.exportSize;
+  const processExport = async (format: ExportFormat, scope: ExportScope, size: number) => {
     const filenameWithExt = `${filename}.${format}`;
     // Export background if the scope is full, regardless of preview setting
     const withBg = scope === 'full';
