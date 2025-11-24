@@ -159,6 +159,73 @@ const TabButton = ({ active, onClick, icon: Icon, label }: { active: boolean; on
   </button>
 );
 
+const EffectControl = ({ 
+    label, 
+    enabled, 
+    onToggle, 
+    value, 
+    onChangeValue, 
+    min = 0, 
+    max = 100,
+    mode = 'slider',
+    formatValue = (v: number) => `${Math.round(v)}%` 
+}: {
+    label: string;
+    enabled: boolean;
+    onToggle: (v: boolean) => void;
+    value: number;
+    onChangeValue: (v: number) => void;
+    min?: number;
+    max?: number;
+    mode?: 'slider' | 'input';
+    formatValue?: (v: number) => string;
+}) => {
+    return (
+        <div className="space-y-3 py-1">
+            <div className="flex items-center justify-between">
+                 <span className="text-[11px] font-medium text-zinc-400">{label}</span>
+                 <button 
+                    onClick={() => onToggle(!enabled)}
+                    className={`w-9 h-5 rounded-full relative transition-colors ${enabled ? 'bg-blue-600' : 'bg-zinc-700'}`}
+                 >
+                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-transform duration-200 shadow-sm ${enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                 </button>
+            </div>
+            {enabled && (
+                <div className="animate-in slide-in-from-top-1 fade-in duration-200">
+                    {mode === 'slider' ? (
+                        <div className="flex items-center gap-3 pl-1">
+                            <input 
+                                type="range"
+                                min={min}
+                                max={max}
+                                step={(max - min) / 100}
+                                value={value}
+                                onChange={(e) => onChangeValue(parseFloat(e.target.value))}
+                                className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                            />
+                            <div className="w-10 text-right">
+                                <span className="text-[10px] font-mono text-zinc-400">{formatValue(value)}</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="pl-1">
+                            <NumberInput 
+                                label="Opacity"
+                                value={value * 100}
+                                onChange={(v) => onChangeValue(v / 100)}
+                                min={0}
+                                max={max * 100}
+                                suffix="%"
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- Export Modal ---
 
 interface ExportModalProps {
@@ -259,13 +326,14 @@ export default function App() {
             const parsed = JSON.parse(saved);
             const sorted = parsed.sort((a: SavedFile, b: SavedFile) => b.lastModified - a.lastModified);
             
-            // Simple migration to ensure imageSize exists on old saves
+            // Migration
             const migrated = sorted.map((f: any) => ({
                 ...f,
                 config: {
                     ...INITIAL_CONFIG,
                     ...f.config,
-                    imageSize: f.config.imageSize || (f.config.imageScale ? 256 : INITIAL_CONFIG.imageSize)
+                    imageSize: f.config.imageSize || (f.config.imageScale ? 256 : INITIAL_CONFIG.imageSize),
+                    radialGlareOpacity: f.config.radialGlareOpacity ?? 0
                 }
             }));
             
@@ -625,6 +693,13 @@ export default function App() {
                     <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
                  </filter>`;
              }
+
+             if (config.radialGlareOpacity > 0) {
+                 defs += `<radialGradient id="glareGradient" cx="50%" cy="0%" r="80%" fx="50%" fy="0%">
+                    <stop offset="0%" stop-color="white" stop-opacity="${config.radialGlareOpacity}" />
+                    <stop offset="100%" stop-color="white" stop-opacity="0" />
+                 </radialGradient>`;
+             }
              
              fullSvg = `<svg width="${size}" height="${size}" viewBox="0 0 512 512" xmlns="${svgNs}">
                 <defs>
@@ -636,6 +711,7 @@ export default function App() {
                 <g clip-path="url(#squircleClip)">
                     <rect width="512" height="512" ${bgFill} />
                     ${config.noiseOpacity > 0 ? `<rect width="512" height="512" filter="url(#noiseFilter)" opacity="${config.noiseOpacity}" style="mix-blend-mode: overlay" />` : ''}
+                    ${config.radialGlareOpacity > 0 ? `<rect width="512" height="512" fill="url(#glareGradient)" />` : ''}
                 </g>
                 <g>
                     ${contentSvg}
@@ -706,6 +782,16 @@ export default function App() {
             }
             ctx.putImageData(imageData, 0, 0);
         }
+
+        // Glare
+        if (config.radialGlareOpacity > 0) {
+            const glareGrad = ctx.createRadialGradient(size/2, 0, 0, size/2, 0, size * 0.8);
+            glareGrad.addColorStop(0, `rgba(255, 255, 255, ${config.radialGlareOpacity})`);
+            glareGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = glareGrad;
+            ctx.fillRect(0, 0, size, size);
+        }
+
     } else {
         if (format === 'jpg') {
              // Optional: fill white for JPG if no background? 
@@ -964,7 +1050,7 @@ export default function App() {
       {/* --- MAIN CONTENT LAYOUT --- */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* === LEFT SIDEBAR: CONTENT === */}
+        {/* === LEFT SIDEBAR: CONTENT CREATION === */}
         <aside className="w-80 bg-zinc-950 border-r border-white/5 flex flex-col shrink-0">
              
              {/* Mode Toggles */}
@@ -980,7 +1066,7 @@ export default function App() {
              {/* Content Settings Scroll Area */}
              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 
-                {/* ICON MODE */}
+                {/* ICON MODE: Search */}
                 {config.mode === 'icon' && (
                     <div className="space-y-6 animate-in fade-in duration-300">
                         <Section title="Select Icon">
@@ -994,7 +1080,7 @@ export default function App() {
                                     onChange={(e) => setIconSearch(e.target.value)}
                                 />
                             </div>
-                            <div className="grid grid-cols-5 gap-1.5 max-h-[240px] overflow-y-auto p-1 bg-zinc-900/30 rounded-lg border border-white/5">
+                            <div className="grid grid-cols-5 gap-1.5 max-h-[600px] overflow-y-auto p-1 bg-zinc-900/30 rounded-lg border border-white/5">
                                 {iconList.map((name) => {
                                     const Icon = (LucideIcons as any)[name];
                                     return (
@@ -1010,19 +1096,10 @@ export default function App() {
                                 })}
                             </div>
                         </Section>
-
-                        <Section title="Adjustments">
-                            <NumberInput label="Size" value={config.iconSize} min={16} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ iconSize: v })} />
-                            <NumberInput label="Vertical Offset" value={config.iconOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ iconOffsetY: v })} />
-                        </Section>
-
-                        <Section title="Appearance">
-                             <ColorInput label="Icon Color" value={config.iconColor} onChange={(v) => updateConfig({ iconColor: v })} />
-                        </Section>
                     </div>
                 )}
 
-                {/* TEXT MODE */}
+                {/* TEXT MODE: Input & Fonts */}
                 {config.mode === 'text' && (
                     <div className="space-y-6 animate-in fade-in duration-300">
                          <Section title="Content">
@@ -1049,31 +1126,10 @@ export default function App() {
                                 ))}
                             </div>
                          </Section>
-
-                         <Section title="Adjustments">
-                            <NumberInput label="Size" value={config.textSize} min={16} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ textSize: v })} />
-                            <NumberInput label="Vertical Offset" value={config.textOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ textOffsetY: v })} />
-                            <ControlLabel>Font Weight</ControlLabel>
-                            <div className="flex gap-1 bg-zinc-900/50 p-1 rounded-md border border-white/5">
-                                {['400', '600', '700', '900'].map(w => (
-                                    <button 
-                                        key={w}
-                                        onClick={() => updateConfig({ fontWeight: w })}
-                                        className={`flex-1 text-[10px] py-1 rounded ${config.fontWeight === w ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-                                    >
-                                        {w}
-                                    </button>
-                                ))}
-                            </div>
-                         </Section>
-
-                         <Section title="Appearance">
-                            <ColorInput label="Text Color" value={config.textColor} onChange={(v) => updateConfig({ textColor: v })} />
-                         </Section>
                     </div>
                 )}
 
-                {/* PIXEL MODE */}
+                {/* PIXEL MODE: Editor */}
                 {config.mode === 'pixel' && (
                     <div className="animate-in fade-in duration-300">
                         <Section title="Editor">
@@ -1085,16 +1141,13 @@ export default function App() {
                                 onColorChange={(color) => updateConfig({ pixelColor: color })}
                             />
                         </Section>
-                        <Section title="Adjustments">
-                             <NumberInput label="Size" value={config.pixelSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ pixelSize: v })} />
-                        </Section>
                         <div className="bg-zinc-900/30 p-3 rounded-md border border-white/5 text-[10px] text-zinc-500">
                             Tip: Left click to draw, right click or use eraser to remove pixels.
                         </div>
                     </div>
                 )}
 
-                 {/* IMAGE MODE */}
+                 {/* IMAGE MODE: Upload */}
                  {config.mode === 'image' && (
                     <div className="animate-in fade-in duration-300">
                         <Section title="Upload Image">
@@ -1132,11 +1185,6 @@ export default function App() {
                                      </button>
                                 )}
                             </div>
-                        </Section>
-
-                        <Section title="Adjustments">
-                            <NumberInput label="Size" value={config.imageSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ imageSize: v })} />
-                            <NumberInput label="Vertical Offset" value={config.imageOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ imageOffsetY: v })} />
                         </Section>
                     </div>
                  )}
@@ -1206,7 +1254,7 @@ export default function App() {
             </div>
         </main>
 
-        {/* === RIGHT SIDEBAR: APPEARANCE === */}
+        {/* === RIGHT SIDEBAR: APPEARANCE & ADJUSTMENTS === */}
         <aside className="w-80 bg-zinc-950 border-l border-white/5 flex flex-col shrink-0">
             
             {/* Presets */}
@@ -1243,7 +1291,10 @@ export default function App() {
             </div>
 
             {/* Detailed Controls */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-8">
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
+
+                 {/* --- BACKGROUND SETTINGS --- */}
+
                  <Section title="Fill Styles">
                     <div className="flex items-center justify-between mb-4">
                         <label className="text-xs text-zinc-400">Fill Type</label>
@@ -1283,14 +1334,25 @@ export default function App() {
 
                  <Section title="Effects">
                     <div className="space-y-4">
-                        <NumberInput 
-                            label="Noise Texture" 
-                            value={Math.round(config.noiseOpacity * 100)} 
-                            min={0} 
-                            max={40} 
-                            step={1} 
-                            suffix="%" 
-                            onChange={(v) => updateConfig({ noiseOpacity: v / 100 })} 
+                        <EffectControl 
+                            label="Noise Texture"
+                            enabled={config.noiseOpacity > 0}
+                            onToggle={(enabled) => updateConfig({ noiseOpacity: enabled ? 0.25 : 0 })}
+                            value={config.noiseOpacity}
+                            onChangeValue={(v) => updateConfig({ noiseOpacity: v })}
+                            min={0}
+                            max={0.5}
+                            mode="input"
+                        />
+                        <EffectControl 
+                            label="Radial Glare"
+                            enabled={config.radialGlareOpacity > 0}
+                            onToggle={(enabled) => updateConfig({ radialGlareOpacity: enabled ? 0.25 : 0 })}
+                            value={config.radialGlareOpacity}
+                            onChangeValue={(v) => updateConfig({ radialGlareOpacity: v })}
+                            min={0}
+                            max={1}
+                            formatValue={(v) => `${Math.round(v * 100)}%`}
                         />
                     </div>
                  </Section>
@@ -1306,6 +1368,53 @@ export default function App() {
                         </button>
                     </div>
                  </Section>
+
+                 <div className="h-px bg-white/5 w-full my-6" />
+                 
+                 {/* --- DYNAMIC CONTENT ADJUSTMENTS --- */}
+                 {config.mode === 'icon' && (
+                     <Section title="Icon Settings">
+                        <NumberInput label="Size" value={config.iconSize} min={16} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ iconSize: v })} />
+                        <NumberInput label="Vertical Offset" value={config.iconOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ iconOffsetY: v })} />
+                        <div className="pt-2">
+                            <ColorInput label="Icon Color" value={config.iconColor} onChange={(v) => updateConfig({ iconColor: v })} />
+                        </div>
+                     </Section>
+                 )}
+
+                 {config.mode === 'text' && (
+                     <Section title="Text Settings">
+                        <NumberInput label="Size" value={config.textSize} min={16} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ textSize: v })} />
+                        <NumberInput label="Vertical Offset" value={config.textOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ textOffsetY: v })} />
+                        
+                        <ControlLabel>Font Weight</ControlLabel>
+                        <div className="flex gap-1 bg-zinc-900/50 p-1 rounded-md border border-white/5 mb-3">
+                            {['400', '600', '700', '900'].map(w => (
+                                <button 
+                                    key={w}
+                                    onClick={() => updateConfig({ fontWeight: w })}
+                                    className={`flex-1 text-[10px] py-1 rounded ${config.fontWeight === w ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                >
+                                    {w}
+                                </button>
+                            ))}
+                        </div>
+                        <ColorInput label="Text Color" value={config.textColor} onChange={(v) => updateConfig({ textColor: v })} />
+                     </Section>
+                 )}
+
+                 {config.mode === 'pixel' && (
+                     <Section title="Pixel Settings">
+                        <NumberInput label="Render Size" value={config.pixelSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ pixelSize: v })} />
+                     </Section>
+                 )}
+
+                 {config.mode === 'image' && (
+                     <Section title="Image Settings">
+                        <NumberInput label="Size" value={config.imageSize} min={32} max={1024} step={8} suffix="px" onChange={(v) => updateConfig({ imageSize: v })} />
+                        <NumberInput label="Vertical Offset" value={config.imageOffsetY} min={-512} max={512} step={4} suffix="px" onChange={(v) => updateConfig({ imageOffsetY: v })} />
+                     </Section>
+                 )}
             </div>
         </aside>
 

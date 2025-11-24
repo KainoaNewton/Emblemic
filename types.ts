@@ -23,6 +23,7 @@ export interface IconConfig {
   gradientEnd: string;
   gradientAngle: number; // for linear
   noiseOpacity: number;
+  radialGlareOpacity: number;
   
   // Icon Mode
   selectedIconName: string;
