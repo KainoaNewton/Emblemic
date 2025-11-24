@@ -1048,10 +1048,17 @@ export default function App() {
                 if (color) {
                     const r = Math.floor(i / gridSize);
                     const c = i % gridSize;
-                    rects += `<rect x="${startX + c * cellSize}" y="${startY + r * cellSize}" width="${cellSize}" height="${cellSize}" fill="${color}" />`;
+                    // Use integer boundaries to ensure seamless pixel coverage
+                    const x = Math.floor(startX + c * cellSize);
+                    const y = Math.floor(startY + r * cellSize);
+                    const nextX = Math.floor(startX + (c + 1) * cellSize);
+                    const nextY = Math.floor(startY + (r + 1) * cellSize);
+                    const w = nextX - x;
+                    const h = nextY - y;
+                    rects += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${color}" />`;
                 }
             });
-            contentSvg = `<g>${rects}</g>`;
+            contentSvg = `<g shape-rendering="crispEdges">${rects}</g>`;
         } else if (config.mode === 'image' && config.imageSrc) {
             const drawSize = config.imageSize;
             const isSvg = config.imageSrc.startsWith('data:image/svg');
@@ -1264,7 +1271,12 @@ export default function App() {
                 const r = Math.floor(i / gridSize);
                 const c = i % gridSize;
                 ctx.fillStyle = color;
-                ctx.fillRect(startX + c * cellSize, startY + r * cellSize, cellSize, cellSize);
+                // Use integer boundaries to ensure seamless pixel coverage
+                const x = Math.floor(startX + c * cellSize);
+                const y = Math.floor(startY + r * cellSize);
+                const nextX = Math.floor(startX + (c + 1) * cellSize);
+                const nextY = Math.floor(startY + (r + 1) * cellSize);
+                ctx.fillRect(x, y, nextX - x, nextY - y);
             }
         });
     } else if (config.mode === 'icon') {
