@@ -1357,18 +1357,6 @@ export default function App() {
                     </div>
                  </Section>
 
-                 <Section title="Container">
-                    <div className="flex items-center justify-between p-3 bg-zinc-900/30 rounded-lg border border-white/5">
-                        <span className="text-xs text-zinc-400">Show Background</span>
-                        <button 
-                            onClick={() => updateConfig({ withBackground: !config.withBackground })}
-                            className={`w-10 h-5 rounded-full relative transition-colors ${config.withBackground ? 'bg-blue-600' : 'bg-zinc-700'}`}
-                        >
-                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-transform duration-200 ${config.withBackground ? 'left-6' : 'left-1'}`} />
-                        </button>
-                    </div>
-                 </Section>
-
                  <div className="h-px bg-white/5 w-full my-6" />
                  
                  {/* --- DYNAMIC CONTENT ADJUSTMENTS --- */}

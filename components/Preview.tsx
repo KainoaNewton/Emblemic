@@ -39,8 +39,7 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
 
   // Generate Background Style
   const backgroundStyle = useMemo(() => {
-    if (!config.withBackground) return { background: 'transparent' };
-
+    // Background is always enabled for preview
     let bg = '';
     if (backgroundType === 'solid') {
       bg = solidColor;
@@ -50,7 +49,7 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
       bg = `radial-gradient(circle at center, ${gradientStart}, ${gradientEnd})`;
     }
     return { background: bg };
-  }, [backgroundType, solidColor, gradientStart, gradientEnd, gradientAngle, config.withBackground]);
+  }, [backgroundType, solidColor, gradientStart, gradientEnd, gradientAngle]);
 
   // Get Lucide Icon
   const LucideIcon = (Icons as any)[selectedIconName];
@@ -58,12 +57,10 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
   return (
     <div className="relative flex items-center justify-center group">
       {/* Shadow for depth perception (not exported) */}
-      {config.withBackground && (
-        <div
-          className="absolute inset-4 blur-2xl opacity-40 rounded-full transition-all duration-500 group-hover:opacity-60 group-hover:blur-3xl"
-          style={backgroundStyle}
-        />
-      )}
+      <div
+        className="absolute inset-4 blur-2xl opacity-40 rounded-full transition-all duration-500 group-hover:opacity-60 group-hover:blur-3xl"
+        style={backgroundStyle}
+      />
 
       {/* Main Icon Container */}
       <div
@@ -74,11 +71,11 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
           height: `${PREVIEW_SIZE}px`,
           ...backgroundStyle,
           // Approximate iOS Squircle with CSS for display
-          borderRadius: config.withBackground ? '22%' : '0%',
+          borderRadius: '22%',
         }}
       >
         {/* Noise Texture Overlay */}
-        {config.withBackground && noiseOpacity > 0 && (
+        {noiseOpacity > 0 && (
            <div 
              className="absolute inset-0 pointer-events-none z-0 mix-blend-overlay"
              style={{
@@ -89,7 +86,7 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
         )}
 
         {/* Radial Glare Overlay */}
-        {config.withBackground && radialGlareOpacity > 0 && (
+        {radialGlareOpacity > 0 && (
            <div 
              className="absolute inset-0 pointer-events-none z-0"
              style={{
