@@ -241,12 +241,18 @@ interface ExportModalProps {
 
 const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, filename }) => {
     const [format, setFormat] = useState<ExportFormat>('png');
-    const [includeBackground, setIncludeBackground] = useState(true);
+    const [exportScope, setExportScope] = useState<ExportScope>('full');
+
+    useEffect(() => {
+        if (isOpen) {
+            setExportScope('full');
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
     const handleExport = () => {
-        onExport(format, includeBackground ? 'full' : 'content');
+        onExport(format, exportScope);
     };
 
     return (
@@ -287,19 +293,38 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, fi
                             </div>
                         </div>
 
-                        {/* Background Toggle */}
-                        <div 
-                            onClick={() => setIncludeBackground(!includeBackground)}
-                            className="flex items-center justify-between p-3 rounded-lg border border-white/5 bg-zinc-800/20 hover:bg-zinc-800/40 hover:border-white/10 transition-all cursor-pointer group"
-                        >
-                            <div className="flex flex-col gap-0.5">
-                                 <span className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">Background</span>
-                                 <span className="text-[11px] text-zinc-500">
-                                    {includeBackground ? 'Export squircle container' : 'Export transparent content'}
-                                 </span>
-                            </div>
-                            <div className={`w-11 h-6 rounded-full relative transition-colors duration-200 border border-transparent ${includeBackground ? 'bg-blue-600' : 'bg-zinc-700'}`}>
-                                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all duration-200 shadow-sm ${includeBackground ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                        {/* Background Selection */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-400">Background</label>
+                            <div className="p-3 rounded-lg border border-white/5 bg-zinc-800/20">
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-sm font-medium text-zinc-200">Background style</span>
+                                        <span className="text-[11px] text-zinc-500">
+                                            {exportScope === 'full'
+                                                ? 'Export with squircle container'
+                                                : 'Export transparent content only'}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            { value: 'full' as ExportScope, label: 'Squircle' },
+                                            { value: 'content' as ExportScope, label: 'Transparent' }
+                                        ].map((option) => (
+                                            <button
+                                                key={option.value}
+                                                onClick={() => setExportScope(option.value)}
+                                                className={`py-2 px-3 rounded-lg border text-sm font-medium transition-all ${
+                                                    exportScope === option.value
+                                                        ? 'bg-white text-black border-white shadow-sm'
+                                                        : 'bg-zinc-900 text-zinc-300 border-white/10 hover:border-white/20 hover:text-white'
+                                                }`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
