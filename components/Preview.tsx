@@ -1,6 +1,6 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { IconConfig } from '../types';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { IconConfig, PixelGrid } from '../types';
 import * as Icons from 'lucide-react';
 import { ICON_SIZE } from '../constants';
 import { getSmartRoundedCorners, cornersToBorderRadius } from '../utils';
@@ -204,14 +204,18 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
             </div>
           )}
 
-          {mode === 'pixel' && (
+          {mode === 'pixel' && !pixelRounding && (
+            <PixelCanvas grid={pixelGrid} size={Math.round(pixelSize * scale)} />
+          )}
+
+          {mode === 'pixel' && pixelRounding && (
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: `repeat(${pixelGrid.cols}, 1fr)`,
                 width: `${pixelSize * scale}px`,
                 aspectRatio: '1/1',
-                imageRendering: pixelRounding ? 'auto' : 'pixelated',
+                imageRendering: 'auto',
               }}
             >
               {pixelGrid.data.map((c, i) => (
@@ -219,7 +223,7 @@ const Preview: React.FC<PreviewProps> = ({ config, id }) => {
                   key={i} 
                   style={{ 
                     backgroundColor: c || 'transparent',
-                    borderRadius: pixelRounding && c ? cornersToBorderRadius(getSmartRoundedCorners(pixelGrid, i), pixelRoundingStyle) : '0',
+                    borderRadius: c ? cornersToBorderRadius(getSmartRoundedCorners(pixelGrid, i), pixelRoundingStyle) : '0',
                   }} 
                 />
               ))}
