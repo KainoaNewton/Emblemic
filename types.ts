@@ -50,6 +50,7 @@ export interface IconConfig {
   imageSrc: string | null;
   imageSize: number;
   imageOffsetY: number;
+  imageColor: string;
 
   // Export
   exportSize: number;
